@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Baseball Mega 4</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Arial Black', sans-serif; }
+        #ui {
+            position: absolute; top: 15px; width: 100%; text-align: center;
+            color: white; pointer-events: none; user-select: none;
+        }
+        .scoreboard {
+            background: linear-gradient(180deg, #1e3799 0%, #0c2461 100%);
+            padding: 15px 40px; border-radius: 15px; display: inline-block;
+            border: 3px solid #f1c40f; box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+        }
+        #msg { font-size: 32px; color: #f1c40f; margin-top: 10px; text-shadow: 3px 3px #000; }
+        .stats { font-size: 20px; display: flex; justify-content: center; gap: 20px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui">
+        <div class="scoreboard">
+            <div style="font-size: 30px; margin-bottom: 5px;">BASEBALL MEGA 4</div>
+            <div class="stats">
+                <div>SKOR: <span id="score">0</span></div>
+                <div>OUTS: <span id="outs">0</span>/3</div>
+            </div>
+        </div>
+        <div id="msg">KLIK UNTUK SWING!</div>
+    </div>
+
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // --- 1. SETTING DUNIA ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a3d62);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. STADIUM & PADANG (LALUAN MERAH & GARISAN) ---
+        // Padang Hijau
+        const grass = new THREE.Mesh(new THREE.CircleGeometry(100, 64), new THREE.MeshBasicMaterial({ color: 0x27ae60 }));
+        grass.rotation.x = -Math.PI / 2;
+        scene.add(grass);
+
+        // Laluan Tanah Merah
+        const dirt = new THREE.Mesh(new THREE.PlaneGeometry(38, 38), new THREE.MeshBasicMaterial({ color: 0xa04000 }));
+        dirt.rotation.x = -Math.PI / 2; dirt.rotation.z = Math.PI / 4;
+        dirt.position.y = 0.01;
+        scene.add(dirt);
+
+        // Garisan Putih Base
+        const lineGeo = new THREE.RingGeometry(26.5, 27, 4, 1, Math.PI/4, Math.PI*2);
+        const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+        const lines = new THREE.Mesh(lineGeo, lineMat);
+        lines.rotation.x = -Math.PI/2; lines.position.y = 0.02;
+        scene.add(lines);
+
+        const baseCoords = [
+            new THREE.Vector3(0, 0, 16),   // Home
+            new THREE.Vector3(13.5, 0, 2.5), // 1st
+            new THREE.Vector3(0, 0, -11),  // 2nd
+            new THREE.Vector3(-13.5, 0, 2.5) // 3rd
+        ];
+
+        baseCoords.forEach(pos => {
+            const b = new THREE.Mesh(new THREE.BoxGeometry(2, 0.3, 2), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            b.position.copy(pos);
+            scene.add(b);
+        });
+
+        // --- 3. PENONTON MEGA ---
+        const stand = new THREE.Mesh(new THREE.CylinderGeometry(95, 115, 40, 64, 5, true, 0, Math.PI), new THREE.MeshBasicMaterial({ color: 0x1e272e, side: THREE.DoubleSide }));
+        stand.position.set(0, 15, -15);
+        scene.add(stand);
+
+        function generateCrowd() {
+            for (let i = 0; i < 1500; i++) {
+                const canvas = document.createElement('canvas');
+                canvas.width = 16; canvas.height = 16;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = `hsl(${Math.random() * 360}, 80%, 50%)`;
+                ctx.fillRect(0, 0, 16, 16);
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas) }));
+                let angle = Math.random() * Math.PI;
+                let rad = 98 + Math.random() * 15;
+                sprite.position.set(Math.cos(angle)*rad, 5 + Math.random()*35, Math.sin(angle)*-rad - 15);
+                scene.add(sprite);
+            }
+        }
+        generateCrowd();
+
+        // --- 4. PEMAIN BERWARNA ---
+        function createPlayer(jersey, pants, skin) {
+            const group = new THREE.Group();
+            const p = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 0.8), new THREE.MeshBasicMaterial({color: pants}));
+            p.position.y = 0.4;
+            const j = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.8), new THREE.MeshBasicMaterial({color: jersey}));
+            j.position.y = 1.2;
+            const h = new THREE.Mesh(new THREE.SphereGeometry(0.35), new THREE.MeshBasicMaterial({color: skin}));
+            h.position.y = 1.8;
+            group.add(p, j, h);
+            scene.add(group);
+            return group;
+        }
+
+        const pitcher = createPlayer(0xffd700, 0x333333, 0xffdbac); pitcher.position.set(0, 0, 0);
+        const catcher = createPlayer(0xff0000, 0x333333, 0xffdbac); catcher.position.set(0, 0, 18.5);
+
+        let runners = [null, null, null, null], score = 0, outs = 0, gameState = "READY";
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.28), new THREE.MeshBasicMaterial({color: 0xffffff}));
+        scene.add(ball);
+
+        function spawnBatter() {
+            const b = createPlayer(0x0000ff, 0xeeeeee, 0x8d5524);
+            b.position.copy(baseCoords[0]);
+            const bat = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.12, 2.5), new THREE.MeshBasicMaterial({color: 0x5d4037}));
+            bat.name="bat"; bat.rotation.z = Math.PI/2; bat.position.set(1.2, 1.2, 0);
+            b.add(bat); runners[0] = b;
+        }
+
+        // --- 5. LOGIK GAMEPLAY ---
+        function swing() {
+            if (gameState !== "PITCHING") return;
+            if (ball.position.distanceTo(runners[0].position) < 4.5) {
+                gameState = "HIT";
+                let isHR = Math.random() > 0.85;
+                if (isHR) {
+                    document.getElementById("msg").innerText = "HOME RUN!!!";
+                    let count = 1;
+                    for(let i=1; i<4; i++) { if(runners[i]) { count++; scene.remove(runners[i]); runners[i]=null; } }
+                    score += count; scene.remove(runners[0]);
+                } else {
+                    document.getElementById("msg").innerText = "HIT!";
+                    if (runners[3]) { scene.remove(runners[3]); runners[3]=null; score++; }
+                    for(let i=2; i>=1; i--) { if(runners[i]) { runners[i+1] = runners[i]; runners[i+1].position.copy(baseCoords[i+1]); runners[i]=null; } }
+                    runners[1] = runners[0];
+                    const batObj = runners[1].getObjectByName("bat"); if(batObj) runners[1].remove(batObj);
+                    runners[1].position.copy(baseCoords[1]);
+                }
+                updateUI();
+                gameState = "READY"; setTimeout(() => { spawnBatter(); pitch(); }, 1500);
+            } else {
+                outs++; updateUI();
+                document.getElementById("msg").innerText = "STRIKE!";
+                if(outs >= 3) { outs=0; score=0; document.getElementById("msg").innerText = "INNING CHANGE!"; }
+                gameState = "READY"; setTimeout(() => { scene.remove(runners[0]); spawnBatter(); pitch(); }, 1200);
+            }
+        }
+
+        function pitch() { ball.position.set(0, 1.5, 1); gameState = "PITCHING"; }
+        function updateUI() { document.getElementById("score").innerText = score; document.getElementById("outs").innerText = outs; }
+        
+        window.addEventListener('mousedown', swing);
+        window.addEventListener('touchstart', (e) => { e.preventDefault(); swing(); }, { passive: false });
+
+        camera.position.set(0, 22, 45); camera.lookAt(0, 0, 5);
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            if (gameState === "PITCHING") { 
+                ball.position.z += 0.48; 
+                if (ball.position.z > 23) { gameState = "READY"; setTimeout(pitch, 1000); } 
+            }
+            renderer.render(scene, camera);
+        }
+
+        spawnBatter(); pitch(); animate();
+    </script>
+</body>
+</html>
